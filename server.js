@@ -828,6 +828,49 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────
+// NOTES ENDPOINTS
+// ─────────────────────────────────────────
+
+app.get('/api/waypoint/notes', async (req, res) => {
+  try {
+    const rows = await waypointDb`
+      SELECT * FROM notes WHERE user_id = 1
+      ORDER BY created_at DESC
+      LIMIT 100
+    `;
+    res.json(rows);
+  } catch (err) {
+    console.error('Notes error:', err);
+    res.json([]);
+  }
+});
+
+app.post('/api/waypoint/notes', async (req, res) => {
+  try {
+    const { body } = req.body;
+    const result = await waypointDb`
+      INSERT INTO notes (user_id, body)
+      VALUES (1, ${body})
+      RETURNING *
+    `;
+    res.status(201).json(result[0]);
+  } catch (err) {
+    console.error('Add note error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/waypoint/notes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await waypointDb`DELETE FROM notes WHERE id = ${id} AND user_id = 1`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete note error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ─────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────
 
