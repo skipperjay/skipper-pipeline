@@ -73,8 +73,8 @@ app.get('/api/dashboard', async (req, res) => {
       newsletter:  newsletterLatest[0] || null
     });
   } catch (err) {
-    console.error('Dashboard error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('FULL ERROR /api/dashboard:', err.message, err.stack);
+    res.status(500).json({ error: err.message, detail: err.stack });
   }
 });
 
@@ -719,7 +719,8 @@ app.get('/api/daily-reviews', async (req, res) => {
     `;
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('FULL ERROR /api/daily-reviews:', err.message, err.stack);
+    res.status(500).json({ error: err.message, detail: err.stack });
   }
 });
 
