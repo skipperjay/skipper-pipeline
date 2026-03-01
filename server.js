@@ -16,6 +16,22 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Test DB connections on startup
+(async () => {
+  try {
+    await sql`SELECT 1`;
+    console.log('✅ Skipper DB connected');
+  } catch (err) {
+    console.error('❌ Skipper DB connection failed:', err.message);
+  }
+  try {
+    await waypointDb`SELECT 1`;
+    console.log('✅ Waypoint DB connected');
+  } catch (err) {
+    console.error('❌ Waypoint DB connection failed:', err.message);
+  }
+})();
+
 // ─────────────────────────────────────────
 // HEALTH CHECK
 // ─────────────────────────────────────────
