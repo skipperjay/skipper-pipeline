@@ -811,7 +811,7 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
 // START SERVER
 // ─────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚢 Skipper Media Pipeline API running on port ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/health`);
   console.log(`   Dashboard: http://localhost:${PORT}/api/dashboard\n`);
