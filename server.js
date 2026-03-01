@@ -101,31 +101,35 @@ app.get('/api/dashboard', async (req, res) => {
 // Get all content (filterable)
 app.get('/api/content', async (req, res) => {
   try {
-    const { pillar, status, format, stage } = req.query;
+    const { pillar } = req.query;
 
-    let query = sql`SELECT * FROM content WHERE 1=1`;
-
-    // Note: Neon serverless supports template literals for safe parameterization
-    // For dynamic filtering, build conditions
-    const conditions = [];
-    if (pillar)  conditions.push(sql`pillar = ${pillar}`);
-    if (status)  conditions.push(sql`status = ${status}`);
-    if (format)  conditions.push(sql`format = ${format}`);
-    if (stage)   conditions.push(sql`stage  = ${stage}`);
-
-    const rows = await sql`
-      SELECT
-        c.*,
-        array_agg(cp.platform) FILTER (WHERE cp.platform IS NOT NULL) AS platforms
-      FROM content c
-      LEFT JOIN content_platform cp ON cp.content_id = c.id
-      ${pillar ? sql`WHERE c.pillar = ${pillar}` : sql``}
-      GROUP BY c.id
-      ORDER BY c.created_at DESC
-    `;
+    let rows;
+    if (pillar) {
+      rows = await sql`
+        SELECT
+          c.*,
+          array_agg(cp.platform) FILTER (WHERE cp.platform IS NOT NULL) AS platforms
+        FROM content c
+        LEFT JOIN content_platform cp ON cp.content_id = c.id
+        WHERE c.pillar = ${pillar}
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+      `;
+    } else {
+      rows = await sql`
+        SELECT
+          c.*,
+          array_agg(cp.platform) FILTER (WHERE cp.platform IS NOT NULL) AS platforms
+        FROM content c
+        LEFT JOIN content_platform cp ON cp.content_id = c.id
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+      `;
+    }
 
     res.json(rows);
   } catch (err) {
+    console.error('FULL ERROR /api/content:', err.message, err.stack);
     res.status(500).json({ error: err.message });
   }
 });
