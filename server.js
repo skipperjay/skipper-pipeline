@@ -306,14 +306,22 @@ app.get('/api/ideas', async (req, res) => {
 
 app.post('/api/ideas', async (req, res) => {
   try {
-    const { title, pillar, format, source, priority, notes } = req.body;
+    const { title, pillar, format, source, priority, notes, raw_idea, summary } = req.body;
     const result = await sql`
       INSERT INTO ideas (title, pillar, format, source, priority, notes)
-      VALUES (${title}, ${pillar}, ${format}, ${source}, ${priority || 3}, ${notes})
+      VALUES (
+        ${summary || title || raw_idea},
+        ${pillar || 'build_the_business'},
+        ${format || null},
+        ${source || 'whatsapp'},
+        ${priority || 2},
+        ${raw_idea || notes || null}
+      )
       RETURNING *
     `;
     res.status(201).json(result[0]);
   } catch (err) {
+    console.error('Add idea error:', err);
     res.status(500).json({ error: err.message });
   }
 });
