@@ -306,16 +306,15 @@ app.get('/api/ideas', async (req, res) => {
 
 app.post('/api/ideas', async (req, res) => {
   try {
-    const { title, pillar, format, source, priority, notes, raw_idea, summary } = req.body;
+    const { raw_idea, summary, pillar, source } = req.body;
     const result = await sql`
-      INSERT INTO ideas (title, pillar, format, source, priority, notes)
+      INSERT INTO ideas (title, pillar, source, notes, priority)
       VALUES (
-        ${summary || title || raw_idea},
+        ${summary || (raw_idea || '').slice(0, 120)},
         ${pillar || 'build_the_business'},
-        ${format || null},
         ${source || 'whatsapp'},
-        ${priority || 2},
-        ${raw_idea || notes || null}
+        ${raw_idea || null},
+        2
       )
       RETURNING *
     `;
