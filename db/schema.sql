@@ -348,12 +348,11 @@ WHERE status != 'published'
 GROUP BY stage
 ORDER BY
   CASE stage
-    WHEN 'idea'        THEN 1
-    WHEN 'backlog'     THEN 2
-    WHEN 'in_progress' THEN 3
-    WHEN 'review'      THEN 4
-    WHEN 'approved'    THEN 5
-    WHEN 'done'        THEN 6
+    WHEN 'backlog'     THEN 1
+    WHEN 'in_progress' THEN 2
+    WHEN 'review'      THEN 3
+    WHEN 'approved'    THEN 4
+    WHEN 'done'        THEN 5
   END;
 
 -- Audience growth over time (combined)

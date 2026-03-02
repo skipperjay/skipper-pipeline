@@ -78,12 +78,11 @@ app.get('/api/dashboard', async (req, res) => {
         GROUP BY stage
         ORDER BY
           CASE stage
-            WHEN 'idea'        THEN 1
-            WHEN 'backlog'     THEN 2
-            WHEN 'in_progress' THEN 3
-            WHEN 'review'      THEN 4
-            WHEN 'approved'    THEN 5
-            WHEN 'done'        THEN 6
+            WHEN 'backlog'     THEN 1
+            WHEN 'in_progress' THEN 2
+            WHEN 'review'      THEN 3
+            WHEN 'approved'    THEN 4
+            WHEN 'done'        THEN 5
           END
       `,
       // 5 most recently published pieces
@@ -368,7 +367,7 @@ app.post('/api/ideas/:id/promote', async (req, res) => {
         title,
         COALESCE(${pillar || null}::content_pillar, ideas.pillar),
         ${format || 'long_form_video'}::content_format,
-        ${stage || 'idea'},
+        ${stage || 'backlog'},
         'idea'
       FROM ideas WHERE id = ${id}
       RETURNING *
