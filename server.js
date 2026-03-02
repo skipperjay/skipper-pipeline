@@ -260,6 +260,8 @@ app.patch('/api/content/:id', async (req, res) => {
 app.delete('/api/content/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // Clear the foreign key reference from ideas first
+    await sql`UPDATE ideas SET promoted_to_content = NULL WHERE promoted_to_content = ${id}`;
     await sql`DELETE FROM content WHERE id = ${id}`;
     res.json({ success: true });
   } catch (err) {
