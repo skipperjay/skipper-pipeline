@@ -329,18 +329,17 @@ app.post('/api/ideas', async (req, res) => {
 app.post('/api/ideas/:id/promote', async (req, res) => {
   try {
     const { id } = req.params;
-    const idea = await sql`SELECT * FROM ideas WHERE id = ${id}`;
-    if (!idea[0]) return res.status(404).json({ error: 'Idea not found' });
+    const { pillar, format, stage } = req.body;
 
     const content = await sql`
-      INSERT INTO content (title, pillar, format, status, stage, notes)
-      VALUES (
-        ${idea[0].title},
-        ${idea[0].pillar},
-        ${idea[0].format || 'long_form_video'},
-        'idea', 'backlog',
-        ${idea[0].notes}
-      )
+      INSERT INTO content (title, pillar, format, stage, status)
+      SELECT
+        title,
+        COALESCE(${pillar || null}::content_pillar, ideas.pillar),
+        ${format || 'long_form_video'}::content_format,
+        ${stage || 'idea'},
+        'idea'
+      FROM ideas WHERE id = ${id}
       RETURNING *
     `;
 
@@ -348,8 +347,9 @@ app.post('/api/ideas/:id/promote', async (req, res) => {
       UPDATE ideas SET promoted_to_content = ${content[0].id} WHERE id = ${id}
     `;
 
-    res.status(201).json({ idea: idea[0], content: content[0] });
+    res.json(content[0]);
   } catch (err) {
+    console.error('Promote idea error:', err);
     res.status(500).json({ error: err.message });
   }
 });
