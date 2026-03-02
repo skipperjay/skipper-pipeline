@@ -238,6 +238,17 @@ app.patch('/api/content/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/content/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql`DELETE FROM content WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete content error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─────────────────────────────────────────
 // ANALYTICS — VIEWS
 // ─────────────────────────────────────────
@@ -350,6 +361,17 @@ app.post('/api/ideas/:id/promote', async (req, res) => {
     res.json(content[0]);
   } catch (err) {
     console.error('Promote idea error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/ideas/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql`DELETE FROM ideas WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete idea error:', err);
     res.status(500).json({ error: err.message });
   }
 });
