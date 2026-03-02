@@ -877,6 +877,29 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.delete('/api/waypoint/workouts/sessions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await waypointDb`DELETE FROM workout_sets WHERE session_id = ${id}`;
+    await waypointDb`DELETE FROM workout_sessions WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete session error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/waypoint/workouts/sets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await waypointDb`DELETE FROM workout_sets WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete set error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 // ─────────────────────────────────────────
 // NOTES ENDPOINTS
 // ─────────────────────────────────────────
