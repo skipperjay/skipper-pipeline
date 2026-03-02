@@ -714,15 +714,28 @@ app.post('/api/waypoint/todos', async (req, res) => {
 app.get('/api/waypoint/workouts', async (req, res) => {
   try {
     const sessions = await waypointDb`
-      SELECT 
-        ws.id, ws.session_date, ws.duration_mins, ws.created_at,
-        COUNT(wt.id) as total_sets,
-        array_agg(DISTINCT wt.exercise) as exercises
+      SELECT
+        ws.id,
+        ws.session_date,
+        ws.duration_mins,
+        ws.created_at,
+        COUNT(wset.id) as total_sets,
+        array_agg(DISTINCT wset.exercise ORDER BY wset.exercise) FILTER (WHERE wset.exercise IS NOT NULL) as exercises,
+        json_agg(
+          json_build_object(
+            'id', wset.id,
+            'exercise', wset.exercise,
+            'weight_lbs', wset.weight_lbs,
+            'reps', wset.reps,
+            'set_number', wset.set_number,
+            'muscle_group', wset.muscle_group
+          ) ORDER BY wset.created_at
+        ) FILTER (WHERE wset.id IS NOT NULL) as sets
       FROM workout_sessions ws
-      LEFT JOIN workout_sets wt ON wt.session_id = ws.id
+      LEFT JOIN workout_sets wset ON wset.session_id = ws.id
       WHERE ws.user_id = 1
       GROUP BY ws.id
-      ORDER BY ws.session_date DESC
+      ORDER BY ws.created_at DESC
       LIMIT 20
     `;
     res.json(sessions);
