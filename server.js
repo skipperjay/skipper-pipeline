@@ -65,7 +65,27 @@ app.get('/api/dashboard', async (req, res) => {
         ORDER BY snapshot_date DESC LIMIT 1
       `,
       // Production pipeline status
-      sql`SELECT * FROM vw_pipeline_status`,
+      sql`
+        SELECT
+          stage,
+          COUNT(*) AS total,
+          array_agg(id    ORDER BY created_at DESC) AS content_ids,
+          array_agg(title ORDER BY created_at DESC) AS content_titles,
+          array_agg(pillar ORDER BY created_at DESC) AS content_pillars,
+          array_agg(format ORDER BY created_at DESC) AS content_formats
+        FROM content
+        WHERE status != 'published'
+        GROUP BY stage
+        ORDER BY
+          CASE stage
+            WHEN 'idea'        THEN 1
+            WHEN 'backlog'     THEN 2
+            WHEN 'in_progress' THEN 3
+            WHEN 'review'      THEN 4
+            WHEN 'approved'    THEN 5
+            WHEN 'done'        THEN 6
+          END
+      `,
       // 5 most recently published pieces
       sql`
         SELECT id, title, pillar, format, published_at

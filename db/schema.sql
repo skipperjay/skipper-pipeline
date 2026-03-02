@@ -338,18 +338,22 @@ GROUP BY c.format;
 CREATE VIEW vw_pipeline_status AS
 SELECT
   stage,
-  COUNT(*)          AS total,
-  array_agg(title)  AS content_titles
+  COUNT(*)                                          AS total,
+  array_agg(id     ORDER BY created_at DESC)        AS content_ids,
+  array_agg(title  ORDER BY created_at DESC)        AS content_titles,
+  array_agg(pillar ORDER BY created_at DESC)        AS content_pillars,
+  array_agg(format ORDER BY created_at DESC)        AS content_formats
 FROM content
 WHERE status != 'published'
 GROUP BY stage
 ORDER BY
   CASE stage
-    WHEN 'backlog'     THEN 1
-    WHEN 'in_progress' THEN 2
-    WHEN 'review'      THEN 3
-    WHEN 'approved'    THEN 4
-    WHEN 'done'        THEN 5
+    WHEN 'idea'        THEN 1
+    WHEN 'backlog'     THEN 2
+    WHEN 'in_progress' THEN 3
+    WHEN 'review'      THEN 4
+    WHEN 'approved'    THEN 5
+    WHEN 'done'        THEN 6
   END;
 
 -- Audience growth over time (combined)
