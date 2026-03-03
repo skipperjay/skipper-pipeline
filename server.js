@@ -957,6 +957,152 @@ app.delete('/api/waypoint/notes/:id', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────
+// PROJECTS
+// ─────────────────────────────────────────
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    const projects = await sql`
+      SELECT
+        p.*,
+        COUNT(DISTINCT pm.id) as total_milestones,
+        COUNT(DISTINCT pm.id) FILTER (WHERE pm.completed = true) as completed_milestones,
+        COALESCE(SUM(pu.mins_logged), 0) as total_mins_logged,
+        json_agg(DISTINCT jsonb_build_object(
+          'id', pm.id, 'title', pm.title, 'completed', pm.completed, 'completed_at', pm.completed_at
+        )) FILTER (WHERE pm.id IS NOT NULL) as milestones,
+        json_agg(DISTINCT jsonb_build_object(
+          'id', pu.id, 'body', pu.body, 'mins_logged', pu.mins_logged, 'source', pu.source, 'created_at', pu.created_at
+        )) FILTER (WHERE pu.id IS NOT NULL) as updates
+      FROM projects p
+      LEFT JOIN project_milestones pm ON pm.project_id = p.id
+      LEFT JOIN project_updates pu ON pu.project_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `;
+    res.json(projects);
+  } catch (err) {
+    console.error('Projects error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/projects', async (req, res) => {
+  try {
+    const { name, description, status, target_date } = req.body;
+    const result = await sql`
+      INSERT INTO projects (name, description, status, target_date)
+      VALUES (${name}, ${description||null}, ${status||'active'}, ${target_date||null})
+      RETURNING *
+    `;
+    res.status(201).json(result[0]);
+  } catch (err) {
+    console.error('Create project error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/projects/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, status, target_date } = req.body;
+    const result = await sql`
+      UPDATE projects SET
+        name = COALESCE(${name||null}, name),
+        description = COALESCE(${description||null}, description),
+        status = COALESCE(${status||null}, status),
+        target_date = COALESCE(${target_date||null}, target_date)
+      WHERE id = ${id} RETURNING *
+    `;
+    res.json(result[0]);
+  } catch (err) {
+    console.error('Update project error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/projects/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql`DELETE FROM projects WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete project error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/projects/:id/milestones', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+    const result = await sql`
+      INSERT INTO project_milestones (project_id, title)
+      VALUES (${id}, ${title}) RETURNING *
+    `;
+    res.status(201).json(result[0]);
+  } catch (err) {
+    console.error('Add milestone error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/projects/milestones/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { completed } = req.body;
+    const result = await sql`
+      UPDATE project_milestones SET
+        completed = ${completed},
+        completed_at = ${completed ? new Date().toISOString() : null}
+      WHERE id = ${id} RETURNING *
+    `;
+    res.json(result[0]);
+  } catch (err) {
+    console.error('Update milestone error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/projects/milestones/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql`DELETE FROM project_milestones WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete milestone error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/projects/:id/updates', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { body, mins_logged, source } = req.body;
+    const result = await sql`
+      INSERT INTO project_updates (project_id, body, mins_logged, source)
+      VALUES (${id}, ${body}, ${mins_logged||null}, ${source||'dashboard'})
+      RETURNING *
+    `;
+    res.status(201).json(result[0]);
+  } catch (err) {
+    console.error('Add update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/projects/updates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await sql`DELETE FROM project_updates WHERE id = ${id}`;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────
 
