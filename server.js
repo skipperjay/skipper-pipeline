@@ -225,34 +225,21 @@ app.post('/api/content', async (req, res) => {
 app.patch('/api/content/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const fields = req.body;
+    const { stage, status, title, pillar, format } = req.body;
 
-    // Only allow safe fields to be updated
-    const allowed = [
-      'title', 'status', 'stage', 'hook', 'description',
-      'script_url', 'thumbnail_url', 'video_url',
-      'target_publish_date', 'published_at',
-      'tags', 'notes', 'lesson_learned'
-    ];
-
-    const updates = Object.entries(fields)
-      .filter(([key]) => allowed.includes(key));
-
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
-    }
-
-    // Build dynamic update — using individual queries for safety
-    for (const [key, value] of updates) {
-      await sql`
-        UPDATE content SET ${sql(key)} = ${value}
-        WHERE id = ${id}
-      `;
-    }
-
-    const updated = await sql`SELECT * FROM content WHERE id = ${id}`;
-    res.json(updated[0]);
+    const result = await sql`
+      UPDATE content SET
+        stage  = COALESCE(${stage  || null}, stage),
+        status = COALESCE(${status || null}, status),
+        title  = COALESCE(${title  || null}, title),
+        pillar = COALESCE(${pillar || null}::content_pillar, pillar),
+        format = COALESCE(${format || null}::content_format, format)
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    res.json(result[0]);
   } catch (err) {
+    console.error('Update content error:', err);
     res.status(500).json({ error: err.message });
   }
 });
