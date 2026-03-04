@@ -146,7 +146,15 @@ app.get('/api/content', async (req, res) => {
       `;
     }
 
-    res.json(rows);
+    // Attach phases to each content item
+    const allPhases = await sql`SELECT * FROM content_phases ORDER BY content_id, id`
+    const phasesByContent = {}
+    allPhases.forEach(p => {
+      if (!phasesByContent[p.content_id]) phasesByContent[p.content_id] = []
+      phasesByContent[p.content_id].push(p)
+    })
+    const contentWithPhases = rows.map(c => ({ ...c, phases: phasesByContent[c.id] || [] }))
+    res.json(contentWithPhases);
   } catch (err) {
     console.error('FULL ERROR /api/content:', err.message, err.stack);
     res.status(500).json({ error: err.message });
@@ -180,6 +188,11 @@ app.get('/api/content/:id', async (req, res) => {
     ]);
 
     if (!content[0]) return res.status(404).json({ error: 'Content not found' });
+
+    const phases = await sql`
+      SELECT * FROM content_phases WHERE content_id = ${id} ORDER BY id
+    `
+    content[0].phases = phases
 
     res.json({
       ...content[0],
@@ -256,6 +269,56 @@ app.delete('/api/content/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Get phases for a content item
+app.get('/api/content/:id/phases', async (req, res) => {
+  try {
+    const { id } = req.params
+    const phases = await sql`
+      SELECT * FROM content_phases WHERE content_id = ${id} ORDER BY id
+    `
+    res.json(phases)
+  } catch (err) {
+    console.error('Get phases error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Update a single phase
+app.patch('/api/content/:id/phases/:phase', async (req, res) => {
+  try {
+    const { id, phase } = req.params
+    const { completed, completed_at, mins_spent, notes } = req.body
+
+    // Upsert — create if doesn't exist, update if does
+    const existing = await sql`
+      SELECT id FROM content_phases WHERE content_id = ${id} AND phase = ${phase}
+    `
+
+    let result
+    if (existing.length > 0) {
+      result = await sql`
+        UPDATE content_phases SET
+          completed    = COALESCE(${completed ?? null}, completed),
+          completed_at = ${completed_at || null},
+          mins_spent   = COALESCE(${mins_spent ?? null}, mins_spent),
+          notes        = COALESCE(${notes ?? null}, notes)
+        WHERE content_id = ${id} AND phase = ${phase}
+        RETURNING *
+      `
+    } else {
+      result = await sql`
+        INSERT INTO content_phases (content_id, phase, completed, completed_at, mins_spent, notes)
+        VALUES (${id}, ${phase}, ${completed || false}, ${completed_at || null}, ${mins_spent || 0}, ${notes || ''})
+        RETURNING *
+      `
+    }
+    res.json(result[0])
+  } catch (err) {
+    console.error('Update phase error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
 
 // ─────────────────────────────────────────
 // ANALYTICS — VIEWS
