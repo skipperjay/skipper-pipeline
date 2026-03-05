@@ -1168,13 +1168,17 @@ app.post('/api/ai/complete', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
         messages,
         ...(system ? { system } : {}),
       }),
     })
     const data = await response.json()
+    if (!response.ok) {
+      console.error('Anthropic API error:', response.status, JSON.stringify(data))
+      return res.status(502).json({ error: data.error?.message || 'Anthropic API error' })
+    }
     res.json(data)
   } catch (err) {
     console.error('AI proxy error:', err)
