@@ -238,15 +238,16 @@ app.post('/api/content', async (req, res) => {
 app.patch('/api/content/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { stage, status, title, pillar, format } = req.body;
+    const { stage, status, title, pillar, format, published_at } = req.body;
 
     const result = await sql`
       UPDATE content SET
-        stage  = COALESCE(${stage  || null}, stage),
-        status = COALESCE(${status || null}, status),
-        title  = COALESCE(${title  || null}, title),
-        pillar = COALESCE(${pillar || null}::content_pillar, pillar),
-        format = COALESCE(${format || null}::content_format, format)
+        stage        = COALESCE(${stage  || null}, stage),
+        status       = COALESCE(${status || null}, status),
+        title        = COALESCE(${title  || null}, title),
+        pillar       = COALESCE(${pillar || null}::content_pillar, pillar),
+        format       = COALESCE(${format || null}::content_format, format),
+        published_at = COALESCE(${published_at || null}::timestamptz, published_at)
       WHERE id = ${id}
       RETURNING *
     `;
