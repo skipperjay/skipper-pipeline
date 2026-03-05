@@ -553,7 +553,7 @@ app.post('/api/newsletter', async (req, res) => {
 
 app.get('/api/waypoint/habits/today', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const allHabits = await waypointDb`
       SELECT DISTINCT habit_name FROM habit_logs
       WHERE user_id = 1 ORDER BY habit_name
