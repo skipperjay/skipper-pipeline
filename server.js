@@ -671,14 +671,14 @@ app.patch('/api/waypoint/todos/:id', async (req, res) => {
 
 app.patch('/api/waypoint/habits/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const habitName = req.params.id;
     const { schedule_type, scheduled_days, weekly_target } = req.body;
     await waypointDb`
       UPDATE habits SET
         schedule_type = COALESCE(${schedule_type || null}, schedule_type),
         scheduled_days = COALESCE(${scheduled_days || null}, scheduled_days),
         weekly_target = COALESCE(${weekly_target || null}, weekly_target)
-      WHERE id = ${id} AND user_id = 1
+      WHERE habit_name = ${habitName} AND user_id = 1
     `;
     res.json({ success: true });
   } catch (err) {
