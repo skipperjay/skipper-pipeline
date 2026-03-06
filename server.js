@@ -635,6 +635,7 @@ app.get('/api/waypoint/habits/today', async (req, res) => {
 
 app.get('/api/waypoint/todos', async (req, res) => {
   try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const todos = await waypointDb`
       SELECT id, task, pillar, due_date, completed, completed_at, created_at
       FROM todos
@@ -642,10 +643,47 @@ app.get('/api/waypoint/todos', async (req, res) => {
       ORDER BY completed ASC, due_date ASC NULLS LAST, created_at DESC
       LIMIT 50
     `;
-    res.json(todos);
+    const result = todos.map(t => ({
+      ...t,
+      is_overdue: t.due_date && !t.completed_at && t.due_date.toISOString().split('T')[0] < today,
+    }));
+    res.json(result);
   } catch (err) {
     console.error('Waypoint todos error:', err);
     res.json([]);
+  }
+});
+
+app.patch('/api/waypoint/todos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { due_date } = req.body;
+    await waypointDb`
+      UPDATE todos SET due_date = ${due_date || null}
+      WHERE id = ${id} AND user_id = 1
+    `;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update todo error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/waypoint/habits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { schedule_type, scheduled_days, weekly_target } = req.body;
+    await waypointDb`
+      UPDATE habits SET
+        schedule_type = COALESCE(${schedule_type || null}, schedule_type),
+        scheduled_days = COALESCE(${scheduled_days || null}, scheduled_days),
+        weekly_target = COALESCE(${weekly_target || null}, weekly_target)
+      WHERE id = ${id} AND user_id = 1
+    `;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update habit error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
