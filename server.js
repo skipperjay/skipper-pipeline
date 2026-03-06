@@ -637,10 +637,11 @@ app.get('/api/waypoint/todos', async (req, res) => {
   try {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const todos = await waypointDb`
-      SELECT id, task, pillar, due_date, completed, completed_at, created_at
+      SELECT id, task, pillar, due_date, completed, completed_at, created_at,
+             COALESCE(priority, 0) as priority
       FROM todos
       WHERE user_id = 1
-      ORDER BY completed ASC, due_date ASC NULLS LAST, created_at DESC
+      ORDER BY completed ASC, priority ASC, due_date ASC NULLS LAST, created_at DESC
       LIMIT 50
     `;
     const result = todos.map(t => ({
@@ -657,9 +658,11 @@ app.get('/api/waypoint/todos', async (req, res) => {
 app.patch('/api/waypoint/todos/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { due_date } = req.body;
+    const { due_date, priority } = req.body;
     await waypointDb`
-      UPDATE todos SET due_date = ${due_date || null}
+      UPDATE todos SET
+        due_date = COALESCE(${due_date !== undefined ? due_date : null}, due_date),
+        priority = COALESCE(${priority !== undefined ? priority : null}, priority)
       WHERE id = ${id} AND user_id = 1
     `;
     res.json({ success: true });
@@ -683,6 +686,36 @@ app.patch('/api/waypoint/habits/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Update habit error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/waypoint/habits', async (req, res) => {
+  try {
+    const { habit_name, schedule_type, scheduled_days, weekly_target } = req.body;
+    if (!habit_name) return res.status(400).json({ error: 'habit_name required' });
+    const result = await waypointDb`
+      INSERT INTO habits (user_id, habit_name, schedule_type, scheduled_days, weekly_target)
+      VALUES (1, ${habit_name}, ${schedule_type || 'daily'}, ${scheduled_days || []}, ${weekly_target || 7})
+      ON CONFLICT (user_id, habit_name) DO NOTHING
+      RETURNING *
+    `;
+    res.json(result[0] || { success: true });
+  } catch (err) {
+    console.error('Create habit error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/waypoint/habits/:id', async (req, res) => {
+  try {
+    const habitName = req.params.id;
+    await waypointDb`
+      DELETE FROM habits WHERE habit_name = ${habitName} AND user_id = 1
+    `;
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete habit error:', err);
     res.status(500).json({ error: err.message });
   }
 });
