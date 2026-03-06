@@ -554,17 +554,61 @@ app.post('/api/newsletter', async (req, res) => {
 
 app.get('/api/waypoint/habits/today', async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    const allHabits = await waypointDb`
-      SELECT DISTINCT habit_name FROM habit_logs
-      WHERE user_id = 1 ORDER BY habit_name
-    `;
+    const now = new Date();
+    const today = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const dayOfWeek = parseInt(now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'narrow' }).length > 0
+      ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(now)
+      : '0');
+    // 0=Sun, 1=Mon, ..., 6=Sat
+    const jsDay = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(
+      new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(now)
+    );
+
+    // Monday of current week
+    const todayDate = new Date(today + 'T12:00:00');
+    const mondayOffset = (jsDay === 0 ? 6 : jsDay - 1);
+    const weekStart = new Date(todayDate);
+    weekStart.setDate(weekStart.getDate() - mondayOffset);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+
+    // Get habits from habits table, fallback to habit_logs if table doesn't exist yet
+    let allHabits;
+    try {
+      allHabits = await waypointDb`
+        SELECT id, habit_name, schedule_type, scheduled_days, weekly_target, active
+        FROM habits WHERE user_id = 1 AND active = true ORDER BY created_at ASC
+      `;
+    } catch {
+      // Fallback if habits table doesn't exist yet
+      allHabits = (await waypointDb`
+        SELECT DISTINCT habit_name FROM habit_logs WHERE user_id = 1 ORDER BY habit_name
+      `).map(h => ({ habit_name: h.habit_name, schedule_type: 'daily', scheduled_days: [], weekly_target: 7, active: true }));
+    }
+
     const todayLogs = await waypointDb`
-      SELECT habit_name FROM habit_logs
-      WHERE user_id = 1 AND logged_date = ${today}
+      SELECT habit_name FROM habit_logs WHERE user_id = 1 AND logged_date = ${today}
     `;
     const loggedToday = new Set(todayLogs.map(l => l.habit_name));
-    const result = await Promise.all(allHabits.map(async ({ habit_name }) => {
+
+    // Weekly log counts for weekly_target habits
+    const weeklyLogs = await waypointDb`
+      SELECT habit_name, COUNT(*) as cnt FROM habit_logs
+      WHERE user_id = 1 AND logged_date >= ${weekStartStr}
+      GROUP BY habit_name
+    `;
+    const weeklyCounts = {};
+    for (const r of weeklyLogs) weeklyCounts[r.habit_name] = parseInt(r.cnt);
+
+    const result = await Promise.all(allHabits.map(async (h) => {
+      const habit_name = h.habit_name;
+      // Determine due_today based on schedule
+      let due_today = true;
+      if (h.schedule_type === 'specific_days') {
+        due_today = (h.scheduled_days || []).includes(jsDay);
+      } else if (h.schedule_type === 'weekly_target') {
+        due_today = (weeklyCounts[habit_name] || 0) < (h.weekly_target || 7);
+      }
+
       const logs = await waypointDb`
         SELECT logged_date FROM habit_logs
         WHERE user_id = 1 AND habit_name = ${habit_name}
@@ -572,7 +616,7 @@ app.get('/api/waypoint/habits/today', async (req, res) => {
       `;
       let streak = 0;
       const dates = logs.map(l => new Date(l.logged_date).toISOString().split('T')[0]);
-      const check = new Date();
+      const check = new Date(today + 'T12:00:00');
       if (!loggedToday.has(habit_name)) check.setDate(check.getDate() - 1);
       for (let i = 0; i < 30; i++) {
         const d = new Date(check);
@@ -580,7 +624,7 @@ app.get('/api/waypoint/habits/today', async (req, res) => {
         if (dates.includes(d.toISOString().split('T')[0])) streak++;
         else break;
       }
-      return { habit_name, logged_today: loggedToday.has(habit_name), streak };
+      return { habit_name, logged_today: loggedToday.has(habit_name), streak, due_today };
     }));
     res.json(result);
   } catch (err) {
