@@ -1245,10 +1245,36 @@ app.get('/api/waypoint/workouts/weekly-analysis', async (req, res) => {
       muscleGroups.push({ name, volume: vol, prev_volume: prev, pct_change: pctChange });
     }
 
+    // Calculate days elapsed in the week (EST)
+    const nowEST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const todayEST = new Date(nowEST.getFullYear(), nowEST.getMonth(), nowEST.getDate());
+    const weekStartDate = new Date(weekStart + 'T00:00:00');
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekStartDate.getDate() + 6); // Sunday
+
+    // Is this a past week or is today Sunday?
+    const isPastWeek = todayEST > weekEndDate;
+    const isSunday = todayEST.getDay() === 0 && todayEST >= weekStartDate && todayEST <= weekEndDate;
+    const weekComplete = isPastWeek || isSunday;
+
+    // Days elapsed: how many days of this week are done
+    let daysElapsed;
+    if (isPastWeek) {
+      daysElapsed = 7;
+    } else if (todayEST < weekStartDate) {
+      daysElapsed = 0;
+    } else {
+      // Diff in days from Monday + 1 (Monday = 1 day elapsed)
+      const diffMs = todayEST - weekStartDate;
+      daysElapsed = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    }
+
     res.json({
       week_start: weekStart,
       sessions_completed: sessionsThisWeek.size,
       sessions_target: 3,
+      days_elapsed: daysElapsed,
+      week_complete: weekComplete,
       muscle_groups: muscleGroups,
     });
   } catch (err) {

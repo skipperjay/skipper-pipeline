@@ -25,9 +25,12 @@ function buildWeeklyPrompt(data) {
   return `You are a fitness coach reviewing a full training week for Jay, who is recomping (losing fat while building muscle).
 Week of: ${data.week_start}
 Sessions completed: ${data.sessions_completed}/${data.sessions_target}
+Days elapsed this week: ${data.days_elapsed} of 7
+Week complete: ${data.week_complete}
 Volume by muscle group this week vs last week:
 ${groups}
 Goal context: On a recomp, maintaining or increasing volume week over week is success. Flag any muscle groups that dropped significantly or weren't trained.
+If the week is not complete, do NOT penalize for low volume or missed sessions. Instead evaluate pace — if Jay has completed ${data.sessions_completed} sessions in ${data.days_elapsed} days, project whether he is on track to hit ${data.sessions_target} by end of week. Judge volume trends only against completed days, not the full week. A partial week with good pace is a positive sign.
 Write a 3-4 sentence weekly summary. Reference actual numbers. Acknowledge maintenance as progress where relevant. End with one clear focus for next week.`
 }
 
