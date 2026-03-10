@@ -1142,7 +1142,7 @@ app.get('/api/waypoint/workouts/session-analysis/:sessionId', async (req, res) =
         JOIN workout_sessions ws ON ws.id = wset.session_id
         WHERE wset.user_id = 1
           AND ws.session_date < ${sessionDate}
-          AND LOWER(wset.exercise) IN ${waypointDb(exerciseNames.map(e => e.toLowerCase()))}
+          AND LOWER(wset.exercise) = ANY(${exerciseNames.map(e => e.toLowerCase())})
         ORDER BY ws.session_date DESC
       `;
       // Get volume from the most recent previous session only
