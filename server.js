@@ -1079,6 +1079,184 @@ app.delete('/api/waypoint/workouts/sets/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Muscle group mapping for exercise classification
+const MUSCLE_GROUP_MAP = {
+  'Chest': ['bench press', 'incline bench', 'chest fly', 'cable fly', 'push up', 'dips'],
+  'Back': ['deadlift', 'pull up', 'barbell row', 'cable row', 'lat pulldown', 'face pull', 'shrug'],
+  'Legs': ['squat', 'leg press', 'romanian deadlift', 'leg curl', 'leg extension', 'calf raise', 'hip thrust', 'lunge'],
+  'Shoulders': ['overhead press', 'lateral raise', 'front raise', 'rear delt fly', 'arnold press'],
+  'Arms': ['bicep curl', 'hammer curl', 'tricep pushdown', 'skull crusher', 'preacher curl', 'overhead tricep'],
+};
+
+function classifyExercise(exerciseName) {
+  const lower = (exerciseName || '').toLowerCase();
+  for (const [group, exercises] of Object.entries(MUSCLE_GROUP_MAP)) {
+    if (exercises.some(e => lower.includes(e))) return group;
+  }
+  return 'Other';
+}
+
+app.get('/api/waypoint/workouts/session-analysis/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get all sets for this session
+    const sets = await waypointDb`
+      SELECT wset.exercise, wset.reps, wset.weight_lbs, wset.set_number,
+             ws.session_date
+      FROM workout_sets wset
+      JOIN workout_sessions ws ON ws.id = wset.session_id
+      WHERE wset.session_id = ${sessionId} AND wset.user_id = 1
+      ORDER BY wset.created_at
+    `;
+
+    if (!sets.length) return res.json({ session_date: null, muscle_groups: [] });
+
+    const sessionDate = sets[0].session_date;
+
+    // Group by muscle group and calculate volume
+    const groupData = {};
+    for (const s of sets) {
+      const mg = classifyExercise(s.exercise);
+      if (!groupData[mg]) groupData[mg] = { volume: 0, exercises: {} };
+      const vol = (s.reps || 0) * (s.weight_lbs || 0);
+      groupData[mg].volume += vol;
+      if (!groupData[mg].exercises[s.exercise]) {
+        groupData[mg].exercises[s.exercise] = { name: s.exercise, sets: 0, reps: 0, weight: 0 };
+      }
+      const ex = groupData[mg].exercises[s.exercise];
+      ex.sets += 1;
+      ex.reps = Math.max(ex.reps, s.reps || 0);
+      ex.weight = Math.max(ex.weight, s.weight_lbs || 0);
+    }
+
+    // For each muscle group, find the previous session that hit it and get its volume
+    const muscleGroups = [];
+    for (const [name, data] of Object.entries(groupData)) {
+      const exerciseNames = Object.keys(data.exercises);
+      // Find previous session with any of these exercises, before this session date
+      const prevSets = await waypointDb`
+        SELECT wset.exercise, wset.reps, wset.weight_lbs, ws.session_date
+        FROM workout_sets wset
+        JOIN workout_sessions ws ON ws.id = wset.session_id
+        WHERE wset.user_id = 1
+          AND ws.session_date < ${sessionDate}
+          AND LOWER(wset.exercise) IN ${waypointDb(exerciseNames.map(e => e.toLowerCase()))}
+        ORDER BY ws.session_date DESC
+      `;
+      // Get volume from the most recent previous session only
+      let prevVolume = 0;
+      if (prevSets.length) {
+        const prevDate = prevSets[0].session_date;
+        for (const ps of prevSets) {
+          if (String(ps.session_date) === String(prevDate)) {
+            prevVolume += (ps.reps || 0) * (ps.weight_lbs || 0);
+          }
+        }
+      }
+
+      muscleGroups.push({
+        name,
+        volume: data.volume,
+        prev_volume: prevVolume,
+        exercises: Object.values(data.exercises),
+      });
+    }
+
+    res.json({ session_date: sessionDate, muscle_groups: muscleGroups });
+  } catch (err) {
+    console.error('Session analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/waypoint/workouts/weekly-analysis', async (req, res) => {
+  try {
+    // Determine target week (Monday-Sunday EST)
+    let weekStart;
+    if (req.query.week) {
+      weekStart = req.query.week;
+    } else {
+      // Current week's Monday in EST
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const day = now.getDay();
+      const diff = day === 0 ? 6 : day - 1; // Monday = 0 offset
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diff);
+      weekStart = monday.toISOString().split('T')[0];
+    }
+
+    // Calculate week end (Sunday)
+    const startDate = new Date(weekStart + 'T00:00:00');
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 7);
+    const weekEnd = endDate.toISOString().split('T')[0];
+
+    // Previous week
+    const prevStart = new Date(startDate);
+    prevStart.setDate(startDate.getDate() - 7);
+    const prevStartStr = prevStart.toISOString().split('T')[0];
+
+    // Get sets for target week
+    const thisWeekSets = await waypointDb`
+      SELECT wset.exercise, wset.reps, wset.weight_lbs, ws.id as session_id
+      FROM workout_sets wset
+      JOIN workout_sessions ws ON ws.id = wset.session_id
+      WHERE wset.user_id = 1
+        AND ws.session_date >= ${weekStart}
+        AND ws.session_date < ${weekEnd}
+    `;
+
+    // Get sets for previous week
+    const prevWeekSets = await waypointDb`
+      SELECT wset.exercise, wset.reps, wset.weight_lbs
+      FROM workout_sets wset
+      JOIN workout_sessions ws ON ws.id = wset.session_id
+      WHERE wset.user_id = 1
+        AND ws.session_date >= ${prevStartStr}
+        AND ws.session_date < ${weekStart}
+    `;
+
+    // Sessions completed this week
+    const sessionsThisWeek = new Set(thisWeekSets.map(s => s.session_id));
+
+    // Volume by muscle group - this week
+    const thisWeekVol = {};
+    for (const s of thisWeekSets) {
+      const mg = classifyExercise(s.exercise);
+      thisWeekVol[mg] = (thisWeekVol[mg] || 0) + (s.reps || 0) * (s.weight_lbs || 0);
+    }
+
+    // Volume by muscle group - prev week
+    const prevWeekVol = {};
+    for (const s of prevWeekSets) {
+      const mg = classifyExercise(s.exercise);
+      prevWeekVol[mg] = (prevWeekVol[mg] || 0) + (s.reps || 0) * (s.weight_lbs || 0);
+    }
+
+    // Combine all muscle groups from both weeks
+    const allGroups = new Set([...Object.keys(thisWeekVol), ...Object.keys(prevWeekVol)]);
+    const muscleGroups = [];
+    for (const name of allGroups) {
+      const vol = thisWeekVol[name] || 0;
+      const prev = prevWeekVol[name] || 0;
+      const pctChange = prev > 0 ? Math.round(((vol - prev) / prev) * 100) : (vol > 0 ? 100 : 0);
+      muscleGroups.push({ name, volume: vol, prev_volume: prev, pct_change: pctChange });
+    }
+
+    res.json({
+      week_start: weekStart,
+      sessions_completed: sessionsThisWeek.size,
+      sessions_target: 3,
+      muscle_groups: muscleGroups,
+    });
+  } catch (err) {
+    console.error('Weekly analysis error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─────────────────────────────────────────
 // NOTES ENDPOINTS
 // ─────────────────────────────────────────

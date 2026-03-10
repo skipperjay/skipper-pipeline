@@ -22,4 +22,7 @@ export const api = {
   promoteIdea: (id) => req(`/ideas/${id}/promote`, { method: 'POST' }),
   saveReview: (body) => req('/reviews', { method: 'POST', body: JSON.stringify(body) }),
   syncYoutube: () => req('/pipeline/youtube', { method: 'POST' }),
+
+  sessionAnalysis:  (id) => req(`/waypoint/workouts/session-analysis/${id}`),
+  weeklyAnalysis:   (week) => req(`/waypoint/workouts/weekly-analysis${week ? `?week=${week}` : ''}`),
 }

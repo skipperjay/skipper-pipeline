@@ -8,6 +8,7 @@ import Ideas from './components/Ideas'
 import WeeklyReview from './components/WeeklyReview'
 import Performance from './components/Performance'
 import { GrowthChart, PillarChart, ExecChart } from './components/Charts'
+import Workouts from './components/Workouts'
 import { api } from './lib/api'
 
 // Larger gauge for the overview hero
@@ -115,6 +116,7 @@ export default function App() {
   const { data: ideas }   = useQuery({ queryKey: ['ideas'],     queryFn: api.ideas })
   const { data: reviews } = useQuery({ queryKey: ['reviews'],   queryFn: api.reviews })
   const { data: growth }  = useQuery({ queryKey: ['growth'],    queryFn: () => api.growth(84) })
+  const { data: workouts } = useQuery({ queryKey: ['workouts'], queryFn: () => fetch('/api/waypoint/workouts').then(r => r.json()) })
 
   const ytSubs   = dash?.youtube?.subscribers || 0
   const igFollow = dash?.instagram?.followers || 0
@@ -272,6 +274,11 @@ export default function App() {
           {/* ══ WEEKLY REVIEW ══ */}
           {page === 'review' && (
             <WeeklyReview reviews={reviews || []} onToast={showToast} />
+          )}
+
+          {/* ══ WORKOUTS ══ */}
+          {page === 'workouts' && (
+            <Workouts sessions={workouts || []} />
           )}
 
         </div>

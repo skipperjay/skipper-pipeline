@@ -11,6 +11,9 @@ const NAV = [
     { id: 'performance', icon: '▲', label: 'Performance' },
     { id: 'ideas',       icon: '✦', label: 'Ideas' },
   ]},
+  { group: 'Waypoint', items: [
+    { id: 'workouts', icon: '◆', label: 'Workouts' },
+  ]},
 ]
 
 export default function Sidebar({ page, setPage }) {
