@@ -74,7 +74,6 @@ app.get('/api/dashboard', async (req, res) => {
           array_agg(pillar ORDER BY created_at DESC) AS content_pillars,
           array_agg(format ORDER BY created_at DESC) AS content_formats
         FROM content
-        WHERE status != 'published'
         GROUP BY stage
         ORDER BY
           CASE stage
@@ -83,6 +82,7 @@ app.get('/api/dashboard', async (req, res) => {
             WHEN 'review'      THEN 3
             WHEN 'approved'    THEN 4
             WHEN 'done'        THEN 5
+            WHEN 'published'   THEN 6
           END
       `,
       // 5 most recently published pieces
