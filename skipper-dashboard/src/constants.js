@@ -9,7 +9,8 @@ export const PIPELINE_STAGES = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'review',      label: 'Review' },
   { key: 'approved',    label: 'Approved' },
-  { key: 'done',        label: 'Published' },
+  { key: 'done',        label: 'Done' },
+  { key: 'published',   label: 'Published' },
 ]
 
 export function getMonday(d = new Date()) {
@@ -21,7 +22,10 @@ export function getMonday(d = new Date()) {
 
 export function daysSince(dateStr) {
   if (!dateStr) return null
-  return Math.floor((Date.now() - new Date(dateStr)) / 86400000)
+  const fmt = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const today = fmt(new Date())
+  const then = fmt(new Date(dateStr))
+  return Math.floor((new Date(today) - new Date(then)) / 86400000)
 }
 
 export function execStatus(pct) {

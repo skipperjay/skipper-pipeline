@@ -66,7 +66,7 @@ export default function PipelineBoard({ pipeline }) {
       </div>
 
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
+        display: 'grid', gridTemplateColumns: `repeat(${PIPELINE_STAGES.length}, 1fr)`,
         gap: 10, padding: 16,
       }}>
         {PIPELINE_STAGES.map(({ key, label }) => {

@@ -4,13 +4,14 @@ export const PILLARS = {
   build_the_asset: { label: 'Build the Asset', color: '#2ec880' },
 }
 
-export const PIPELINE_STAGES = ['backlog','in_progress','review','approved','done']
+export const PIPELINE_STAGES = ['backlog','in_progress','review','approved','done','published']
 export const PIPELINE_LABELS = {
   backlog: 'Backlog',
   in_progress: 'In Progress',
   review: 'Review',
   approved: 'Approved',
   done: 'Done',
+  published: 'Published',
 }
 
 export function guessPillar(title = '') {

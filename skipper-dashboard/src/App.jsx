@@ -137,7 +137,13 @@ export default function App() {
   }
 
   const lastPub = publishedContent.sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0]
-  const daysSince = lastPub ? Math.floor((Date.now() - new Date(lastPub.published_at)) / 86400000) : null
+  const daysSince = (() => {
+    if (!lastPub) return null
+    const fmt = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const today = fmt(new Date())
+    const then = fmt(new Date(lastPub.published_at))
+    return Math.floor((new Date(today) - new Date(then)) / 86400000)
+  })()
 
   const pillarCounts = {}
   ;(content || []).forEach(c => { if (c.pillar) pillarCounts[c.pillar] = (pillarCounts[c.pillar] || 0) + 1 })
