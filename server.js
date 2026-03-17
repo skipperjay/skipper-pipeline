@@ -31,6 +31,8 @@ app.use(async (req, res, next) => {
   } else {
     req.userId = 1; // Default to Jay for backward compatibility
   }
+  console.log('Token received:', req.headers['x-user-token']);
+  console.log('User ID resolved:', req.userId);
   next();
 });
 
