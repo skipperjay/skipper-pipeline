@@ -16,6 +16,24 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// ─────────────────────────────────────────
+// USER IDENTIFICATION MIDDLEWARE
+// ─────────────────────────────────────────
+app.use(async (req, res, next) => {
+  const token = req.headers['x-user-token'];
+  if (token) {
+    try {
+      const rows = await sql`SELECT id FROM users WHERE token = ${token}`;
+      req.userId = rows.length ? rows[0].id : 1;
+    } catch {
+      req.userId = 1;
+    }
+  } else {
+    req.userId = 1; // Default to Jay for backward compatibility
+  }
+  next();
+});
+
 // Test DB connections on startup
 (async () => {
   try {
@@ -130,7 +148,7 @@ app.get('/api/content', async (req, res) => {
           array_agg(cp.platform) FILTER (WHERE cp.platform IS NOT NULL) AS platforms
         FROM content c
         LEFT JOIN content_platform cp ON cp.content_id = c.id
-        WHERE c.pillar = ${pillar}
+        WHERE c.pillar = ${pillar} AND c.user_id = ${req.userId}
         GROUP BY c.id
         ORDER BY c.created_at DESC
       `;
@@ -141,6 +159,7 @@ app.get('/api/content', async (req, res) => {
           array_agg(cp.platform) FILTER (WHERE cp.platform IS NOT NULL) AS platforms
         FROM content c
         LEFT JOIN content_platform cp ON cp.content_id = c.id
+        WHERE c.user_id = ${req.userId}
         GROUP BY c.id
         ORDER BY c.created_at DESC
       `;
@@ -216,11 +235,11 @@ app.post('/api/content', async (req, res) => {
 
     const result = await sql`
       INSERT INTO content (
-        title, pillar, format, status, stage,
+        user_id, title, pillar, format, status, stage,
         hook, description, script_url, thumbnail_url,
         target_publish_date, tags, notes
       ) VALUES (
-        ${title}, ${pillar}, ${format},
+        ${req.userId}, ${title}, ${pillar}, ${format},
         ${status || 'idea'}, ${stage || 'backlog'},
         ${hook}, ${description}, ${script_url}, ${thumbnail_url},
         ${target_publish_date}, ${tags}, ${notes}
@@ -378,7 +397,7 @@ app.get('/api/ideas', async (req, res) => {
   try {
     const rows = await sql`
       SELECT * FROM ideas
-      WHERE promoted_to_content IS NULL
+      WHERE promoted_to_content IS NULL AND user_id = ${req.userId}
       ORDER BY priority ASC, created_at DESC
     `;
     res.json(rows);
@@ -391,8 +410,9 @@ app.post('/api/ideas', async (req, res) => {
   try {
     const { raw_idea, summary, pillar, source } = req.body;
     const result = await sql`
-      INSERT INTO ideas (title, pillar, source, notes, priority)
+      INSERT INTO ideas (user_id, title, pillar, source, notes, priority)
       VALUES (
+        ${req.userId},
         ${summary || (raw_idea || '').slice(0, 120)},
         ${pillar || 'build_the_business'},
         ${source || 'whatsapp'},
@@ -440,7 +460,7 @@ app.post('/api/ideas/:id/promote', async (req, res) => {
 app.delete('/api/ideas/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await sql`DELETE FROM ideas WHERE id = ${id}`;
+    await sql`DELETE FROM ideas WHERE id = ${id} AND user_id = ${req.userId}`;
     res.json({ success: true });
   } catch (err) {
     console.error('Delete idea error:', err);
@@ -576,24 +596,24 @@ app.get('/api/waypoint/habits/today', async (req, res) => {
     try {
       allHabits = await waypointDb`
         SELECT id, habit_name, schedule_type, scheduled_days, weekly_target, active
-        FROM habits WHERE user_id = 1 AND active = true ORDER BY created_at ASC
+        FROM habits WHERE user_id = ${req.userId} AND active = true ORDER BY created_at ASC
       `;
     } catch {
       // Fallback if habits table doesn't exist yet
       allHabits = (await waypointDb`
-        SELECT DISTINCT habit_name FROM habit_logs WHERE user_id = 1 ORDER BY habit_name
+        SELECT DISTINCT habit_name FROM habit_logs WHERE user_id = ${req.userId} ORDER BY habit_name
       `).map(h => ({ habit_name: h.habit_name, schedule_type: 'daily', scheduled_days: [], weekly_target: 7, active: true }));
     }
 
     const todayLogs = await waypointDb`
-      SELECT habit_name FROM habit_logs WHERE user_id = 1 AND logged_date = ${today}
+      SELECT habit_name FROM habit_logs WHERE user_id = ${req.userId} AND logged_date = ${today}
     `;
     const loggedToday = new Set(todayLogs.map(l => l.habit_name));
 
     // Weekly log counts for weekly_target habits
     const weeklyLogs = await waypointDb`
       SELECT habit_name, COUNT(*) as cnt FROM habit_logs
-      WHERE user_id = 1 AND logged_date >= ${weekStartStr}
+      WHERE user_id = ${req.userId} AND logged_date >= ${weekStartStr}
       GROUP BY habit_name
     `;
     const weeklyCounts = {};
@@ -611,7 +631,7 @@ app.get('/api/waypoint/habits/today', async (req, res) => {
 
       const logs = await waypointDb`
         SELECT logged_date FROM habit_logs
-        WHERE user_id = 1 AND habit_name = ${habit_name}
+        WHERE user_id = ${req.userId} AND habit_name = ${habit_name}
         ORDER BY logged_date DESC LIMIT 30
       `;
       let streak = 0;
@@ -640,7 +660,7 @@ app.get('/api/waypoint/todos', async (req, res) => {
       SELECT id, task, pillar, due_date, completed, completed_at, created_at,
              COALESCE(priority, 0) as priority
       FROM todos
-      WHERE user_id = 1
+      WHERE user_id = ${req.userId}
       ORDER BY completed ASC, priority ASC, due_date ASC NULLS LAST, created_at DESC
       LIMIT 50
     `;
@@ -663,7 +683,7 @@ app.patch('/api/waypoint/todos/:id', async (req, res) => {
       UPDATE todos SET
         due_date = COALESCE(${due_date !== undefined ? due_date : null}, due_date),
         priority = COALESCE(${priority !== undefined ? priority : null}, priority)
-      WHERE id = ${id} AND user_id = 1
+      WHERE id = ${id} AND user_id = ${req.userId}
     `;
     res.json({ success: true });
   } catch (err) {
@@ -681,7 +701,7 @@ app.patch('/api/waypoint/habits/:id', async (req, res) => {
         schedule_type = COALESCE(${schedule_type || null}, schedule_type),
         scheduled_days = COALESCE(${scheduled_days || null}, scheduled_days),
         weekly_target = COALESCE(${weekly_target || null}, weekly_target)
-      WHERE habit_name = ${habitName} AND user_id = 1
+      WHERE habit_name = ${habitName} AND user_id = ${req.userId}
     `;
     res.json({ success: true });
   } catch (err) {
@@ -696,7 +716,7 @@ app.post('/api/waypoint/habits', async (req, res) => {
     if (!habit_name) return res.status(400).json({ error: 'habit_name required' });
     const result = await waypointDb`
       INSERT INTO habits (user_id, habit_name, schedule_type, scheduled_days, weekly_target)
-      VALUES (1, ${habit_name}, ${schedule_type || 'daily'}, ${scheduled_days || []}, ${weekly_target || 7})
+      VALUES (${req.userId}, ${habit_name}, ${schedule_type || 'daily'}, ${scheduled_days || []}, ${weekly_target || 7})
       ON CONFLICT (user_id, habit_name) DO NOTHING
       RETURNING *
     `;
@@ -711,7 +731,7 @@ app.delete('/api/waypoint/habits/:id', async (req, res) => {
   try {
     const habitName = req.params.id;
     await waypointDb`
-      DELETE FROM habits WHERE habit_name = ${habitName} AND user_id = 1
+      DELETE FROM habits WHERE habit_name = ${habitName} AND user_id = ${req.userId}
     `;
     res.json({ success: true });
   } catch (err) {
@@ -725,7 +745,7 @@ app.post('/api/waypoint/todos/:id/complete', async (req, res) => {
     const { id } = req.params;
     await waypointDb`
       UPDATE todos SET completed = true, completed_at = NOW()
-      WHERE id = ${id} AND user_id = 1
+      WHERE id = ${id} AND user_id = ${req.userId}
     `;
     res.json({ success: true });
   } catch (err) {
@@ -739,15 +759,15 @@ app.post('/api/waypoint/capture', async (req, res) => {
     const { text, type, pillar } = req.body;
     if (type === 'idea') {
       const result = await sql`
-        INSERT INTO ideas (title, pillar, source, priority)
-        VALUES (${text}, ${pillar || 'build_the_person'}, 'quick_capture', 3)
+        INSERT INTO ideas (user_id, title, pillar, source, priority)
+        VALUES (${req.userId}, ${text}, ${pillar || 'build_the_person'}, 'quick_capture', 3)
         RETURNING *
       `;
       res.json({ success: true, type: 'idea', data: result[0] });
     } else {
       await waypointDb`
         INSERT INTO logs (user_id, raw_text, entry_type, summary, logged_at, log_date)
-        VALUES (1, ${text}, 'note', ${text}, NOW(), CURRENT_DATE)
+        VALUES (${req.userId}, ${text}, 'note', ${text}, NOW(), CURRENT_DATE)
       `;
       res.json({ success: true, type: 'note' });
     }
@@ -834,7 +854,7 @@ app.get('/api/calendar/events', async (req, res) => {
 app.delete('/api/waypoint/todos/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await waypointDb`DELETE FROM todos WHERE id = ${id} AND user_id = 1`;
+    await waypointDb`DELETE FROM todos WHERE id = ${id} AND user_id = ${req.userId}`;
     res.json({ success: true });
   } catch (err) {
     console.error('Delete todo error:', err);
@@ -849,7 +869,7 @@ app.post('/api/waypoint/todos/:id/snooze', async (req, res) => {
     await waypointDb`
       UPDATE todos
       SET due_date = COALESCE(due_date, CURRENT_DATE) + INTERVAL '1 day'
-      WHERE id = ${id} AND user_id = 1
+      WHERE id = ${id} AND user_id = ${req.userId}
     `;
     res.json({ success: true });
   } catch (err) {
@@ -864,7 +884,7 @@ app.post('/api/waypoint/todos', async (req, res) => {
     const { task, due_date } = req.body;
     const result = await waypointDb`
       INSERT INTO todos (user_id, task, due_date, completed)
-      VALUES (1, ${task}, ${due_date || null}, false)
+      VALUES (${req.userId}, ${task}, ${due_date || null}, false)
       RETURNING *
     `;
     res.status(201).json(result[0]);
@@ -899,7 +919,7 @@ app.get('/api/waypoint/workouts', async (req, res) => {
         ) FILTER (WHERE wset.id IS NOT NULL) as sets
       FROM workout_sessions ws
       LEFT JOIN workout_sets wset ON wset.session_id = ws.id
-      WHERE ws.user_id = 1
+      WHERE ws.user_id = ${req.userId}
       GROUP BY ws.id
       ORDER BY ws.created_at DESC
       LIMIT 20
@@ -923,7 +943,7 @@ app.get('/api/waypoint/workouts/records', async (req, res) => {
         COUNT(DISTINCT ws.id) as total_sessions
       FROM workout_sets wt
       JOIN workout_sessions ws ON ws.id = wt.session_id
-      WHERE wt.user_id = 1
+      WHERE wt.user_id = ${req.userId}
       GROUP BY wt.exercise, wt.muscle_group
       ORDER BY wt.muscle_group NULLS LAST, wt.exercise
     `;
@@ -945,7 +965,7 @@ app.get('/api/waypoint/workouts/progress/:exercise', async (req, res) => {
         wt.weight_lbs
       FROM workout_sets wt
       JOIN workout_sessions ws ON ws.id = wt.session_id
-      WHERE wt.user_id = 1 AND LOWER(wt.exercise) = LOWER(${exercise})
+      WHERE wt.user_id = ${req.userId} AND LOWER(wt.exercise) = LOWER(${exercise})
       ORDER BY ws.session_date ASC, wt.set_number ASC
       LIMIT 100
     `;
@@ -963,6 +983,7 @@ app.get('/api/daily-reviews', async (req, res) => {
   try {
     const rows = await sql`
       SELECT * FROM daily_reviews
+      WHERE user_id = ${req.userId}
       ORDER BY review_date DESC
       LIMIT 60
     `;
@@ -977,8 +998,8 @@ app.post('/api/daily-reviews', async (req, res) => {
   try {
     const { review_date, biggest_win, biggest_blocker, lesson_learned, top_focus } = req.body;
     const result = await sql`
-      INSERT INTO daily_reviews (review_date, biggest_win, biggest_blocker, lesson_learned, top_focus)
-      VALUES (${review_date}, ${biggest_win}, ${biggest_blocker}, ${lesson_learned}, ${top_focus})
+      INSERT INTO daily_reviews (user_id, review_date, biggest_win, biggest_blocker, lesson_learned, top_focus)
+      VALUES (${req.userId}, ${review_date}, ${biggest_win}, ${biggest_blocker}, ${lesson_learned}, ${top_focus})
       ON CONFLICT (review_date) DO UPDATE SET
         biggest_win     = EXCLUDED.biggest_win,
         biggest_blocker = EXCLUDED.biggest_blocker,
@@ -998,12 +1019,12 @@ app.post('/api/waypoint/habits/log', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     await waypointDb`
       INSERT INTO habit_logs (user_id, habit_name, logged_date, duration_mins, notes)
-      VALUES (1, ${habit_name}, ${today}, ${duration_mins || null}, ${notes || null})
+      VALUES (${req.userId}, ${habit_name}, ${today}, ${duration_mins || null}, ${notes || null})
       ON CONFLICT DO NOTHING
     `;
     await waypointDb`
       INSERT INTO logs (user_id, raw_text, pillar, duration_mins, summary, entry_type, habit_name, log_date)
-      VALUES (1, ${`${habit_name} logged from dashboard`}, 'Health', ${duration_mins || null}, ${`Logged ${habit_name}`}, 'habit', ${habit_name}, ${today})
+      VALUES (${req.userId}, ${`${habit_name} logged from dashboard`}, 'Health', ${duration_mins || null}, ${`Logged ${habit_name}`}, 'habit', ${habit_name}, ${today})
     `;
     res.json({ success: true });
   } catch (err) {
@@ -1023,7 +1044,7 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
     // Find or create session
     const existing = await waypointDb`
       SELECT id FROM workout_sessions
-      WHERE user_id = 1 AND created_at >= ${twoHoursAgo.toISOString()}
+      WHERE user_id = ${req.userId} AND created_at >= ${twoHoursAgo.toISOString()}
       ORDER BY created_at DESC LIMIT 1
     `;
 
@@ -1033,7 +1054,7 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
     } else {
       const newSession = await waypointDb`
         INSERT INTO workout_sessions (user_id, session_date)
-        VALUES (1, ${today}) RETURNING id
+        VALUES (${req.userId}, ${today}) RETURNING id
       `;
       sessionId = newSession[0].id;
     }
@@ -1047,7 +1068,7 @@ app.post('/api/waypoint/workouts/log-set', async (req, res) => {
 
     await waypointDb`
       INSERT INTO workout_sets (session_id, user_id, exercise, muscle_group, reps, weight_lbs, set_number)
-      VALUES (${sessionId}, 1, ${exercise}, ${muscle_group || null}, ${reps || null}, ${weight_lbs || null}, ${setNumber})
+      VALUES (${sessionId}, ${req.userId}, ${exercise}, ${muscle_group || null}, ${reps || null}, ${weight_lbs || null}, ${setNumber})
     `;
 
     res.json({ success: true, session_id: sessionId, set_number: setNumber });
@@ -1107,7 +1128,7 @@ app.get('/api/waypoint/workouts/session-analysis/:sessionId', async (req, res) =
              ws.session_date
       FROM workout_sets wset
       JOIN workout_sessions ws ON ws.id = wset.session_id
-      WHERE wset.session_id = ${sessionId} AND wset.user_id = 1
+      WHERE wset.session_id = ${sessionId} AND wset.user_id = ${req.userId}
       ORDER BY wset.created_at
     `;
 
@@ -1140,7 +1161,7 @@ app.get('/api/waypoint/workouts/session-analysis/:sessionId', async (req, res) =
         SELECT wset.exercise, wset.reps, wset.weight_lbs, ws.session_date
         FROM workout_sets wset
         JOIN workout_sessions ws ON ws.id = wset.session_id
-        WHERE wset.user_id = 1
+        WHERE wset.user_id = ${req.userId}
           AND ws.session_date < ${sessionDate}
           AND LOWER(wset.exercise) = ANY(${exerciseNames.map(e => e.toLowerCase())})
         ORDER BY ws.session_date DESC
@@ -1203,7 +1224,7 @@ app.get('/api/waypoint/workouts/weekly-analysis', async (req, res) => {
       SELECT wset.exercise, wset.reps, wset.weight_lbs, ws.id as session_id
       FROM workout_sets wset
       JOIN workout_sessions ws ON ws.id = wset.session_id
-      WHERE wset.user_id = 1
+      WHERE wset.user_id = ${req.userId}
         AND ws.session_date >= ${weekStart}
         AND ws.session_date < ${weekEnd}
     `;
@@ -1213,7 +1234,7 @@ app.get('/api/waypoint/workouts/weekly-analysis', async (req, res) => {
       SELECT wset.exercise, wset.reps, wset.weight_lbs
       FROM workout_sets wset
       JOIN workout_sessions ws ON ws.id = wset.session_id
-      WHERE wset.user_id = 1
+      WHERE wset.user_id = ${req.userId}
         AND ws.session_date >= ${prevStartStr}
         AND ws.session_date < ${weekStart}
     `;
@@ -1290,7 +1311,7 @@ app.get('/api/waypoint/workouts/weekly-analysis', async (req, res) => {
 app.get('/api/waypoint/notes', async (req, res) => {
   try {
     const rows = await waypointDb`
-      SELECT * FROM notes WHERE user_id = 1
+      SELECT * FROM notes WHERE user_id = ${req.userId}
       ORDER BY created_at DESC
       LIMIT 100
     `;
@@ -1306,7 +1327,7 @@ app.post('/api/waypoint/notes', async (req, res) => {
     const { body } = req.body;
     const result = await waypointDb`
       INSERT INTO notes (user_id, body)
-      VALUES (1, ${body})
+      VALUES (${req.userId}, ${body})
       RETURNING *
     `;
     res.status(201).json(result[0]);
@@ -1319,7 +1340,7 @@ app.post('/api/waypoint/notes', async (req, res) => {
 app.delete('/api/waypoint/notes/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await waypointDb`DELETE FROM notes WHERE id = ${id} AND user_id = 1`;
+    await waypointDb`DELETE FROM notes WHERE id = ${id} AND user_id = ${req.userId}`;
     res.json({ success: true });
   } catch (err) {
     console.error('Delete note error:', err);
@@ -1347,6 +1368,7 @@ app.get('/api/projects', async (req, res) => {
       FROM projects p
       LEFT JOIN project_milestones pm ON pm.project_id = p.id
       LEFT JOIN project_updates pu ON pu.project_id = p.id
+      WHERE p.user_id = ${req.userId}
       GROUP BY p.id
       ORDER BY p.created_at DESC
     `;
@@ -1361,8 +1383,8 @@ app.post('/api/projects', async (req, res) => {
   try {
     const { name, description, status, target_date } = req.body;
     const result = await sql`
-      INSERT INTO projects (name, description, status, target_date)
-      VALUES (${name}, ${description||null}, ${status||'active'}, ${target_date||null})
+      INSERT INTO projects (user_id, name, description, status, target_date)
+      VALUES (${req.userId}, ${name}, ${description||null}, ${status||'active'}, ${target_date||null})
       RETURNING *
     `;
     res.status(201).json(result[0]);
@@ -1382,7 +1404,7 @@ app.patch('/api/projects/:id', async (req, res) => {
         description = COALESCE(${description||null}, description),
         status = COALESCE(${status||null}, status),
         target_date = COALESCE(${target_date||null}, target_date)
-      WHERE id = ${id} RETURNING *
+      WHERE id = ${id} AND user_id = ${req.userId} RETURNING *
     `;
     res.json(result[0]);
   } catch (err) {
@@ -1394,7 +1416,7 @@ app.patch('/api/projects/:id', async (req, res) => {
 app.delete('/api/projects/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await sql`DELETE FROM projects WHERE id = ${id}`;
+    await sql`DELETE FROM projects WHERE id = ${id} AND user_id = ${req.userId}`;
     res.json({ success: true });
   } catch (err) {
     console.error('Delete project error:', err);
